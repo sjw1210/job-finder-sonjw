@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>회피기동 - 아케이드 레이싱</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Pretendard:wght@500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background-color: #090d16;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .title-font {
+            font-family: 'Black Han Sans', sans-serif;
+        }
+        
+        /* 화면 흔들림 및 붉은 플래시 애니메이션 */
+        @keyframes shake {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            15% { transform: translate(-10px, -6px) rotate(-1.5deg); }
+            30% { transform: translate(10px, 4px) rotate(1.5deg); }
+            45% { transform: translate(-8px, 6px) rotate(-1deg); }
+            60% { transform: translate(8px, -4px) rotate(1deg); }
+            75% { transform: translate(-4px, 2px) rotate(-0.5deg); }
+        }
+        .shake-active {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        /* 콤보 팝업 효과 */
+        @keyframes comboPop {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.35); }
+            100% { transform: scale(1); }
+        }
+        .combo-pop {
+            animation: comboPop 0.25s ease-out;
+        }
+
+        /* 하트 깨짐 효과 */
+        @keyframes heartBreak {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.4) rotate(12deg); filter: brightness(2); }
+            100% { transform: scale(0.85); opacity: 0.25; filter: grayscale(100%); }
+        }
+        .heart-lost {
+            animation: heartBreak 0.4s forwards;
+        }
+
+        /* 연료 부족 경고 점멸 효과 */
+        @keyframes lowFuelBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .fuel-low {
+            animation: lowFuelBlink 0.6s infinite;
+        }
+
+        /* 조작 버튼 스타일 */
+        .arcade-btn {
+            background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+            box-shadow: 0 6px 0 #0f172a, 0 10px 20px rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.15);
+            transition: all 0.08s ease;
+        }
+        .arcade-btn:active, .arcade-btn.pressed {
+            transform: translateY(5px);
+            box-shadow: 0 1px 0 #0f172a, 0 4px 8px rgba(0,0,0,0.4), inset 0 2px 0 rgba(255,255,255,0.1);
+            background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex items-center justify-center bg-slate-950 text-white">
+
+    <!-- 전체 게임 래퍼 (모바일 비율 최적화) -->
+    <div id="gameWrapper" class="relative w-full h-full max-w-[460px] max-h-[920px] flex flex-col justify-between bg-slate-900 sm:rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.8)] border-x sm:border-4 border-slate-800">
+        
+        <!-- 상단 HUD 영역 -->
+        <header class="relative z-20 bg-slate-900/90 backdrop-blur-md px-4 pt-3 pb-2.5 border-b border-slate-800 flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+                <!-- 좌측: 현재 점수 -->
+                <div class="flex flex-col min-w-[90px]">
+                    <span class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">SCORE</span>
+                    <div class="flex items-baseline gap-1">
+                        <span id="scoreText" class="text-2xl font-black text-amber-400 tabular-nums tracking-tight">0</span>
+                        <span id="bonusRateText" class="text-xs font-bold text-emerald-400">+3/대</span>
+                    </div>
+                </div>
+
+                <!-- 중앙 상단: 생명(하트 3개) -->
+                <div class="flex flex-col items-center">
+                    <div id="heartsBox" class="flex items-center gap-2 bg-slate-950/90 px-3.5 py-1.5 rounded-full border border-slate-800 shadow-inner">
+                        <svg class="heart-icon w-7 h-7 text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.6)] transition-all duration-300" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                        </svg>
+                        <svg class="heart-icon w-7 h-7 text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.6)] transition-all duration-300" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                        </svg>
+                        <svg class="heart-icon w-7 h-7 text-rose-500 drop-shadow-[0_0_8px_rgba(244,63,94,0.6)] transition-all duration-300" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- 우측: 콤보 & 속도 단계 -->
+                <div class="flex flex-col items-end min-w-[90px]">
+                    <div class="flex items-center gap-1.5">
+                        <span id="speedLvBadge" class="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">LV.1</span>
+                        <span class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">COMBO</span>
+                    </div>
+                    <span id="comboText" class="text-2xl font-black text-cyan-400 tabular-nums">0</span>
+                </div>
+            </div>
+
+            <!-- 하단: 실시간 연료 게이지 바 -->
+            <div class="flex items-center gap-2.5 pt-0.5">
+                <div class="flex items-center gap-1 text-xs font-extrabold text-emerald-400 shrink-0">
+                    <span>⛽ FUEL</span>
+                </div>
+                <div class="relative flex-1 h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800 shadow-inner">
+                    <div id="fuelBarFill" class="h-full w-full bg-gradient-to-r from-emerald-500 via-teal-400 to-lime-400 transition-all duration-100 rounded-full"></div>
+                </div>
+                <span id="fuelPercentText" class="text-xs font-extrabold text-slate-300 tabular-nums w-9 text-right">100%</span>
+            </div>
+        </header>
+
+        <!-- 메인 캔버스 (5차선 도로 영역) -->
+        <main id="canvasContainer" class="relative flex-1 w-full bg-slate-800 overflow-hidden">
+            <canvas id="roadCanvas" class="w-full h-full block"></canvas>
+
+            <!-- 충돌 시 붉은색 화면 점멸 오버레이 -->
+            <div id="hitOverlay" class="pointer-events-none absolute inset-0 bg-rose-600/40 opacity-0 transition-opacity duration-150 z-10"></div>
+
+            <!-- 10콤보 달성 속도 증가 알림 토스트 -->
+            <div id="levelUpBanner" class="pointer-events-none absolute top-6 left-1/2 -translate-x-1/2 z-20 opacity-0 -translate-y-4 transition-all duration-300">
+                <div class="bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-slate-950 font-black px-5 py-1.5 rounded-full shadow-[0_0_25px_rgba(245,158,11,0.7)] text-sm tracking-wide flex items-center gap-2 whitespace-nowrap">
+                    <span>⚡ SPEED UP!</span>
+                    <span id="bannerBonusText" class="bg-slate-950 text-amber-300 px-2 py-0.5 rounded-full text-xs">추월 점수 +4</span>
+                </div>
+            </div>
+
+            <!-- 시작 화면 모달 -->
+            <div id="startModal" class="absolute inset-0 z-30 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+                <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.5)] mb-4">
+                    <svg class="w-10 h-10 text-slate-950" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.08 3.11H5.77L6.85 7zM19 17H5v-5h14v5z"/>
+                        <circle cx="7.5" cy="14.5" r="1.5"/>
+                        <circle cx="16.5" cy="14.5" r="1.5"/>
+                    </svg>
+                </div>
+                <h1 class="title-font text-5xl tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-blue-400 to-indigo-400 mb-2">회피기동</h1>
+                <p class="text-slate-300 text-sm mb-6 max-w-xs leading-relaxed">
+                    5차선 도로에서 달려오는 <span class="text-rose-400 font-bold">역주행 차량</span>과 <span class="text-amber-400 font-bold">장애물</span>을 피하세요!
+                </p>
+
+                <div class="w-full max-w-xs bg-slate-900/90 border border-slate-800 rounded-2xl p-4 text-left text-xs text-slate-300 space-y-2.5 mb-7 shadow-lg">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 font-bold flex items-center justify-center shrink-0">1</span>
+                        <span>하단 <strong class="text-white">&lt; , &gt; 화살표 버튼</strong>으로 차선을 변경합니다.</span>
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center shrink-0">2</span>
+                        <span>매초 <strong class="text-amber-300">+1점</strong>, 역주행 차량 추월 시 <strong class="text-amber-300">+3점 &amp; 1콤보!</strong> (직전 회피 시 <strong class="text-cyan-300">5점!</strong>)</span>
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex items-center justify-center shrink-0">3</span>
+                        <span><strong class="text-cyan-300">10콤보마다</strong> 속도가 빨라지고 추월 점수가 <strong class="text-cyan-300">+1점씩 증가</strong>합니다.</span>
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold flex items-center justify-center shrink-0">4</span>
+                        <span>주행 중 줄어드는 연료는 도로 위 <strong class="text-emerald-300">⛽ 기름통(+25%)</strong>으로 충전하세요!</span>
+                    </div>
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-5 h-5 rounded-full bg-rose-500/20 text-rose-400 font-bold flex items-center justify-center shrink-0">5</span>
+                        <span><strong class="text-rose-400">3번 부딪히거나 연료가 바닥나면</strong> 주행이 종료됩니다.</span>
+                    </div>
+                </div>
+
+                <button id="startBtn" class="w-full max-w-xs py-4 rounded-2xl font-black text-lg bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-[0_10px_25px_rgba(37,99,235,0.5)] active:scale-95 transition-all">
+                    엔진 시동 (START)
+                </button>
+            </div>
+
+            <!-- 게임 종료 결과 모달 -->
+            <div id="gameOverModal" class="hidden absolute inset-0 z-30 bg-slate-950/90 backdrop-blur-md flex-col items-center justify-center p-6 text-center">
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-400 text-xs font-bold mb-2">
+                    <span id="gameOverReasonText">💥 차량 파손 (하트 모두 소진)</span>
+                </div>
+                <h2 class="title-font text-4xl text-white tracking-wide mb-6">주행 종료</h2>
+
+                <!-- 최종 성적표 카드 -->
+                <div class="w-full max-w-xs bg-slate-900 border border-slate-800 rounded-2xl p-5 mb-6 shadow-xl space-y-4">
+                    <div class="border-b border-slate-800 pb-4">
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">최종 달성 점수</p>
+                        <p id="finalScoreText" class="text-5xl font-black text-amber-400 tabular-nums">0</p>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <div class="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3">
+                            <p class="text-[11px] text-slate-400 font-semibold mb-1">피한 역주행 차량</p>
+                            <p class="text-xl font-black text-cyan-400 tabular-nums"><span id="finalCarsText">0</span><span class="text-xs font-normal text-slate-400 ml-1">대</span></p>
+                        </div>
+                        <div class="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3">
+                            <p class="text-[11px] text-slate-400 font-semibold mb-1">피한 도로 장애물</p>
+                            <p class="text-xl font-black text-emerald-400 tabular-nums"><span id="finalObsText">0</span><span class="text-xs font-normal text-slate-400 ml-1">개</span></p>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-950/50 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs">
+                        <span class="text-slate-400 font-medium">최대 달성 콤보</span>
+                        <span class="font-bold text-white"><span id="finalMaxComboText">0</span> COMBO</span>
+                    </div>
+                </div>
+
+                <button id="restartBtn" class="w-full max-w-xs py-4 rounded-2xl font-black text-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 shadow-[0_10px_25px_rgba(245,158,11,0.4)] active:scale-95 transition-all">
+                    다시 도전하기
+                </button>
+            </div>
+        </main>
+
+        <!-- 하단 조작부: 좌우 <, > 화살표 버튼 -->
+        <footer class="relative z-20 bg-slate-900 px-5 py-4 border-t border-slate-800">
+            <div class="grid grid-cols-2 gap-4">
+                <button id="leftBtn" type="button" aria-label="왼쪽 차선으로 이동" class="arcade-btn rounded-2xl py-4 flex items-center justify-center text-3xl font-black text-white select-none cursor-pointer">
+                    &lt;
+                </button>
+                <button id="rightBtn" type="button" aria-label="오른쪽 차선으로 이동" class="arcade-btn rounded-2xl py-4 flex items-center justify-center text-3xl font-black text-white select-none cursor-pointer">
+                    &gt;
+                </button>
+            </div>
+            <p class="text-center text-[11px] text-slate-500 mt-2.5 font-medium">
+                화면 좌우 하단 <strong class="text-slate-400">&lt; , &gt; 버튼</strong> 또는 키보드 방향키로 조작하세요
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        /**
+         * 웹 오디오 API 기반 효과음 합성기 (외부 오디오 파일 없이 즉각적인 사운드 피드백 제공)
+         */
+        class SoundEffects {
+            constructor() {
+                this.ctx = null;
+            }
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+            playMove() {
+                if (!this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(280, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(420, this.ctx.currentTime + 0.06);
+                    gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.06);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.06);
+                } catch (e) {}
+            }
+            playPass(combo) {
+                if (!this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    const baseFreq = Math.min(880, 440 + combo * 12);
+                    osc.frequency.setValueAtTime(baseFreq, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.25, this.ctx.currentTime + 0.09);
+                    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.09);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.09);
+                } catch (e) {}
+            }
+            playLevelUp() {
+                if (!this.ctx) return;
+                try {
+                    const notes = [523.25, 659.25, 783.99, 1046.5];
+                    notes.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        const startTime = this.ctx.currentTime + idx * 0.055;
+                        osc.frequency.setValueAtTime(freq, startTime);
+                        gain.gain.setValueAtTime(0.14, startTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.14);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(startTime);
+                        osc.stop(startTime + 0.14);
+                    });
+                } catch (e) {}
+            }
+            playCrash() {
+                if (!this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.3);
+                    gain.gain.setValueAtTime(0.28, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.3);
+                } catch (e) {}
+            }
+            playFuelPickup() {
+                if (!this.ctx) return;
+                try {
+                    const notes = [587.33, 880];
+                    notes.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'sine';
+                        const startTime = this.ctx.currentTime + idx * 0.06;
+                        osc.frequency.setValueAtTime(freq, startTime);
+                        gain.gain.setValueAtTime(0.16, startTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.12);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(startTime);
+                        osc.stop(startTime + 0.12);
+                    });
+                } catch (e) {}
+            }
+            playNearMiss() {
+                if (!this.ctx) return;
+                try {
+                    const notes = [659.25, 987.77, 1318.51];
+                    notes.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        const startTime = this.ctx.currentTime + idx * 0.04;
+                        osc.frequency.setValueAtTime(freq, startTime);
+                        gain.gain.setValueAtTime(0.15, startTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.1);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(startTime);
+                        osc.stop(startTime + 0.1);
+                    });
+                } catch (e) {}
+            }
+        }
+
+        const sfx = new SoundEffects();
+
+        // DOM 요소 참조
+        const gameWrapper = document.getElementById('gameWrapper');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const canvas = document.getElementById('roadCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const scoreText = document.getElementById('scoreText');
+        const bonusRateText = document.getElementById('bonusRateText');
+        const comboText = document.getElementById('comboText');
+        const speedLvBadge = document.getElementById('speedLvBadge');
+        const heartIcons = document.querySelectorAll('.heart-icon');
+        const fuelBarFill = document.getElementById('fuelBarFill');
+        const fuelPercentText = document.getElementById('fuelPercentText');
+        const hitOverlay = document.getElementById('hitOverlay');
+        const levelUpBanner = document.getElementById('levelUpBanner');
+        const bannerBonusText = document.getElementById('bannerBonusText');
+
+        const startModal = document.getElementById('startModal');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const gameOverReasonText = document.getElementById('gameOverReasonText');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+
+        const finalScoreText = document.getElementById('finalScoreText');
+        const finalCarsText = document.getElementById('finalCarsText');
+        const finalObsText = document.getElementById('finalObsText');
+        const finalMaxComboText = document.getElementById('finalMaxComboText');
+
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+
+        // 게임 상수 설정 (기획서 기준 5차선 도로)
+        const LANE_COUNT = 5;
+        const MAX_HEARTS = 3;
+        const MAX_FUEL = 100;
+        const FUEL_DRAIN_PER_SEC = 5.5; // 초당 약 5.5%씩 소모 (기름통 안 먹으면 약 18초, 먹으면 연장)
+        const FUEL_RECHARGE_AMOUNT = 25; // 기름통 획득 시 +25% 충전
+
+        // 게임 상태 변수
+        let state = {
+            running: false,
+            score: 0,
+            combo: 0,
+            maxCombo: 0,
+            hearts: MAX_HEARTS,
+            fuel: MAX_FUEL,
+            dodgedCars: 0,
+            dodgedObstacles: 0,
+            playerLane: 2, // 0 ~ 4 (가운데 2번 차선 시작)
+            playerVisualX: 0,
+            playerY: 0,
+            playerWidth: 44,
+            playerHeight: 76,
+            roadScrollOffset: 0,
+            survivalTimer: 0,
+            spawnTimer: 0,
+            fuelSpawnTimer: 3.5,
+            invincibleTimer: 0,
+            entities: [],
+            floatingTexts: [],
+            particles: [],
+            lastFrameTime: 0
+        };
+
+        // 캔버스 리사이징 처리
+        function resizeCanvas() {
+            const rect = canvasContainer.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            const laneWidth = canvas.width / LANE_COUNT;
+            state.playerWidth = Math.min(52, laneWidth * 0.62);
+            state.playerHeight = state.playerWidth * 1.72;
+            state.playerY = canvas.height - state.playerHeight - 28;
+            state.playerVisualX = getLaneCenterX(state.playerLane);
+        }
+
+        function getLaneCenterX(laneIndex) {
+            const laneWidth = canvas.width / LANE_COUNT;
+            return laneIndex * laneWidth + laneWidth / 2;
+        }
+
+        // 10콤보 단위 레벨 및 속도 배율 계산
+        function getComboTier() {
+            return Math.floor(state.combo / 10);
+        }
+
+        function getSpeedMultiplier() {
+            // 10콤보마다 속도가 15%씩 상승하여 빠른 반응을 요구함
+            return 1 + getComboTier() * 0.15;
+        }
+
+        function getOvertakePoints() {
+            // 기본 추월 점수 3점 + 10콤보마다 1점씩 추가 상승
+            return 3 + getComboTier();
+        }
+
+        // HUD 업데이트
+        function updateHUD(animateCombo = false) {
+            scoreText.textContent = state.score.toLocaleString();
+            comboText.textContent = state.combo;
+
+            const tier = getComboTier();
+            const overtakePts = getOvertakePoints();
+            bonusRateText.textContent = `+${overtakePts}/대`;
+            speedLvBadge.textContent = `LV.${tier + 1}`;
+
+            if (animateCombo) {
+                comboText.classList.remove('combo-pop');
+                void comboText.offsetWidth;
+                comboText.classList.add('combo-pop');
+            }
+
+            // 하트 아이콘 상태 반영
+            heartIcons.forEach((icon, index) => {
+                if (index < state.hearts) {
+                    icon.classList.remove('heart-lost');
+                } else {
+                    icon.classList.add('heart-lost');
+                }
+            });
+
+            // 연료 게이지 바 업데이트
+            updateFuelUI();
+        }
+
+        function updateFuelUI() {
+            const pct = Math.max(0, Math.min(100, Math.ceil(state.fuel)));
+            fuelBarFill.style.width = `${ state.fuel }%`;
+            fuelPercentText.textContent = `${ pct }%`;
+
+            if (state.fuel <= 25) {
+                fuelBarFill.className = 'h-full bg-gradient-to-r from-rose-600 to-amber-500 transition-all duration-100 rounded-full fuel-low';
+                fuelPercentText.classList.add('text-rose-400');
+                fuelPercentText.classList.remove('text-slate-300');
+            } else {
+                fuelBarFill.className = 'h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-lime-400 transition-all duration-100 rounded-full';
+                fuelPercentText.classList.remove('text-rose-400');
+                fuelPercentText.classList.add('text-slate-300');
+            }
+        }
+
+        // 10콤보 달성 배너 표시
+        function triggerLevelUpBanner() {
+            sfx.playLevelUp();
+            bannerBonusText.textContent = `추월 점수 +${getOvertakePoints()}점`;
+            levelUpBanner.classList.remove('opacity-0', '-translate-y-4');
+            levelUpBanner.classList.add('opacity-100', 'translate-y-0');
+
+            setTimeout(() => {
+                levelUpBanner.classList.remove('opacity-100', 'translate-y-0');
+                levelUpBanner.classList.add('opacity-0', '-translate-y-4');
+            }, 1600);
+        }
+
+        // 좌우 차선 이동 함수
+        function moveLane(direction) {
+            if (!state.running) return;
+            const prevLane = state.playerLane;
+            const nextLane = Math.max(0, Math.min(LANE_COUNT - 1, state.playerLane + direction));
+            if (nextLane !== prevLane) {
+                // 부딪히기 직전(근접 위험 구간)에 있는 차량/장애물을 피해 차선을 변경했는지 체크
+                state.entities.forEach(ent => {
+                    if ((ent.type === 'car' || ent.type === 'obstacle') && ent.lane === prevLane && !ent.passed) {
+                        const entBottom = ent.y + ent.height * 0.92;
+                        const playerTop = state.playerY + state.playerHeight * 0.08;
+                        const gap = playerTop - entBottom;
+
+                        // 내 차 바로 코앞(차체 길이의 0.7배 이내)까지 다가왔을 때 피하면 직전 회피 성공으로 기록
+                        if (gap >= -12 && gap <= state.playerHeight * 0.7) {
+                            ent.nearMissed = true;
+                        }
+                    }
+                });
+
+                state.playerLane = nextLane;
+                sfx.playMove();
+            }
+        }
+
+        // 플로팅 텍스트 생성 (+3점, COMBO RESET 등)
+        function addFloatingText(text, x, y, color = '#fbbf24') {
+            state.floatingTexts.push({
+                text,
+                x,
+                y,
+                color,
+                alpha: 1,
+                vy: -70
+            });
+        }
+
+        // 충돌 파티클 생성
+        function spawnCrashParticles(x, y, color) {
+            for (let i = 0; i < 18; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 60 + Math.random() * 180;
+                state.particles.push({
+                    x,
+                    y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 4 + Math.random() * 5,
+                    color,
+                    alpha: 1
+                });
+            }
+        }
+
+        // 역주행 차량 또는 장애물 스폰 (최소 1개 차선은 반드시 안전 통로로 보장)
+        function spawnWave() {
+            const occupiedInTopZone = new Set();
+            state.entities.forEach(ent => {
+                if (ent.y < state.playerHeight * 2.1) {
+                    occupiedInTopZone.add(ent.lane);
+                }
+            });
+
+            const candidateLanes = [];
+            for (let l = 0; l < LANE_COUNT; l++) {
+                if (!occupiedInTopZone.has(l)) candidateLanes.push(l);
+            }
+
+            // 최소 1개 이상의 빈 차선을 남겨서 피할 수 없는 상황을 방지
+            if (candidateLanes.length <= 1) return;
+
+            // 가끔 2개 차선에 동시 출현 (속도 레벨이 높을수록 확률 소폭 증가)
+            const canSpawnTwo = candidateLanes.length >= 3 && Math.random() < Math.min(0.45, 0.2 + getComboTier() * 0.05);
+            const spawnCount = canSpawnTwo ? 2 : 1;
+
+            for (let i = 0; i < spawnCount; i++) {
+                const randIdx = Math.floor(Math.random() * candidateLanes.length);
+                const chosenLane = candidateLanes.splice(randIdx, 1)[0];
+
+                // 68% 확률로 역주행 차량, 32% 확률로 도로 장애물 생성
+                const isCar = Math.random() < 0.68;
+
+                // 각각의 속도가 랜덤으로 다가오도록 설정
+                const randomBaseSpeed = isCar
+                    ? 230 + Math.random() * 190 // 역주행 차량은 속도 편차가 크고 빠름
+                    : 190 + Math.random() * 65; // 장애물은 상대적으로 일정한 속도로 다가옴
+
+                const carPalettes = [
+                    { body: '#ef4444', roof: '#991b1b', light: '#fef08a' }, // 레드 스포츠카
+                    { body: '#a855f7', roof: '#581c87', light: '#fef08a' }, // 퍼플 쿠페
+                    { body: '#10b981', roof: '#065f46', light: '#fef08a' }, // 에메랄드 세단
+                    { body: '#f97316', roof: '#9a3412', light: '#fef08a' }  // 오렌지 머슬카
+                ];
+                const obstacleTypes = ['barricade', 'cone', 'rock'];
+
+                const width = isCar ? state.playerWidth * 0.96 : state.playerWidth * 0.85;
+                const height = isCar ? state.playerHeight * 0.96 : state.playerWidth * 0.85;
+
+                state.entities.push({
+                    type: isCar ? 'car' : 'obstacle',
+                    lane: chosenLane,
+                    x: getLaneCenterX(chosenLane),
+                    y: -height - (i * 45),
+                    width,
+                    height,
+                    baseSpeed: randomBaseSpeed,
+                    palette: carPalettes[Math.floor(Math.random() * carPalettes.length)],
+                    obstacleKind: obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)],
+                    passed: false,
+                    nearMissed: false
+                });
+            }
+        }
+
+        // 랜덤 차선에 기름통 아이템 생성
+        function spawnFuelCan() {
+            const occupiedTopLanes = new Set();
+            state.entities.forEach(ent => {
+                if (ent.y < state.playerHeight * 2.2) {
+                    occupiedTopLanes.add(ent.lane);
+                }
+            });
+
+            const availableLanes = [];
+            for (let l = 0; l < LANE_COUNT; l++) {
+                if (!occupiedTopLanes.has(l)) availableLanes.push(l);
+            }
+
+            if (availableLanes.length === 0) return;
+
+            const chosenLane = availableLanes[Math.floor(Math.random() * availableLanes.length)];
+            const size = state.playerWidth * 0.85;
+
+            state.entities.push({
+                type: 'fuel',
+                lane: chosenLane,
+                x: getLaneCenterX(chosenLane),
+                y: -size - 20,
+                width: size,
+                height: size,
+                baseSpeed: 215,
+                passed: false
+            });
+        }
+
+        // 기름통 획득 시 연료 25% 충전 피드백
+        function handleFuelPickup(entity) {
+            sfx.playFuelPickup();
+            state.fuel = Math.min(MAX_FUEL, state.fuel + FUEL_RECHARGE_AMOUNT);
+            updateFuelUI();
+            spawnCrashParticles(entity.x, entity.y + entity.height / 2, '#34d399');
+            addFloatingText('⛽ 연료 +25%!', state.playerVisualX, state.playerY - 18, '#34d399');
+        }
+
+        // 충돌 시 피드백 처리 (화면 흔들림 + 콤보 초기화 + 중앙 상단 하트 감소)
+        function handleCollision(entity) {
+            sfx.playCrash();
+
+            state.hearts = Math.max(0, state.hearts - 1);
+            const brokenCombo = state.combo;
+            state.combo = 0; // 콤보 즉시 초기화
+            state.invincibleTimer = 0.75; // 연속 다단 히트 방지용 짧은 보호시간
+
+            // 화면 흔들림 애니메이션 트리거
+            gameWrapper.classList.remove('shake-active');
+            void gameWrapper.offsetWidth;
+            gameWrapper.classList.add('shake-active');
+
+            // 붉은 플래시 피드백
+            hitOverlay.classList.remove('opacity-0');
+            hitOverlay.classList.add('opacity-100');
+            setTimeout(() => {
+                hitOverlay.classList.remove('opacity-100');
+                hitOverlay.classList.add('opacity-0');
+            }, 180);
+
+            spawnCrashParticles(entity.x, entity.y + entity.height / 2, '#f43f5e');
+
+            if (brokenCombo > 0) {
+                addFloatingText('콤보 초기화!', state.playerVisualX, state.playerY - 18, '#fb7185');
+            } else {
+                addFloatingText('충돌! -1 ❤️', state.playerVisualX, state.playerY - 18, '#fb7185');
+            }
+
+            updateHUD(false);
+
+            // 하트 3개가 모두 소진되면 즉시 종료
+            if (state.hearts <= 0) {
+                endGame('hearts');
+            }
+        }
+
+        // 게임 시작
+        function startGame() {
+            sfx.init();
+            resizeCanvas();
+
+            state = {
+                running: true,
+                score: 0,
+                combo: 0,
+                maxCombo: 0,
+                hearts: MAX_HEARTS,
+                fuel: MAX_FUEL,
+                dodgedCars: 0,
+                dodgedObstacles: 0,
+                playerLane: 2,
+                playerVisualX: getLaneCenterX(2),
+                playerY: canvas.height - state.playerHeight - 28,
+                playerWidth: state.playerWidth,
+                playerHeight: state.playerHeight,
+                roadScrollOffset: 0,
+                survivalTimer: 0,
+                spawnTimer: 0.4,
+                fuelSpawnTimer: 3.2,
+                invincibleTimer: 0,
+                entities: [],
+                floatingTexts: [],
+                particles: [],
+                lastFrameTime: performance.now()
+            };
+
+            updateHUD(false);
+            startModal.classList.add('hidden');
+            gameOverModal.classList.add('hidden');
+            gameOverModal.classList.remove('flex');
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 게임 종료 처리 및 결과 표시
+        function endGame(reason = 'hearts') {
+            state.running = false;
+            if (reason === 'fuel') {
+                gameOverReasonText.textContent = '⛽ 연료 모두 소진 (주행 멈춤)';
+            } else {
+                gameOverReasonText.textContent = '💥 차량 파손 (하트 모두 소진)';
+            }
+            finalScoreText.textContent = state.score.toLocaleString();
+            finalCarsText.textContent = state.dodgedCars.toLocaleString();
+            finalObsText.textContent = state.dodgedObstacles.toLocaleString();
+            finalMaxComboText.textContent = state.maxCombo.toLocaleString();
+
+            gameOverModal.classList.remove('hidden');
+            gameOverModal.classList.add('flex');
+        }
+
+        // 프레임 업데이트
+        function update(dt) {
+            const speedMult = getSpeedMultiplier();
+
+            // 주행할수록 실시간으로 연료 감소
+            state.fuel = Math.max(0, state.fuel - FUEL_DRAIN_PER_SEC * dt);
+            updateFuelUI();
+            if (state.fuel <= 0) {
+                endGame('fuel');
+                return;
+            }
+
+            // 도로 차선 스크롤
+            state.roadScrollOffset = (state.roadScrollOffset + 320 * speedMult * dt) % 80;
+
+            // 무적 타이머 감소
+            if (state.invincibleTimer > 0) {
+                state.invincibleTimer = Math.max(0, state.invincibleTimer - dt);
+            }
+
+            // 플레이어 차량의 부드러운 차선 이동 보간
+            const targetX = getLaneCenterX(state.playerLane);
+            state.playerVisualX += (targetX - state.playerVisualX) * Math.min(1, dt * 18);
+
+            // 1초가 지날 때마다 점수 1점씩 상승
+            state.survivalTimer += dt;
+            if (state.survivalTimer >= 1.0) {
+                state.survivalTimer -= 1.0;
+                state.score += 1;
+                updateHUD(false);
+            }
+
+            // 장애물 및 역주행 차량 스폰 타이머
+            state.spawnTimer -= dt;
+            if (state.spawnTimer <= 0) {
+                spawnWave();
+                // 콤보 단계가 올라갈수록 생성 주기도 조금씩 단축됨
+                const baseInterval = Math.max(0.38, 0.78 - getComboTier() * 0.045);
+                state.spawnTimer = baseInterval + Math.random() * 0.25;
+            }
+
+            // 기름통 아이템 랜덤 생성 타이머
+            state.fuelSpawnTimer -= dt;
+            if (state.fuelSpawnTimer <= 0) {
+                spawnFuelCan();
+                state.fuelSpawnTimer = 3.2 + Math.random() * 2.0;
+            }
+
+            // 플레이어 히트박스 (약간의 여유를 두어 판정을 쾌적하게 함)
+            const pBox = {
+                left: state.playerVisualX - state.playerWidth * 0.38,
+                right: state.playerVisualX + state.playerWidth * 0.38,
+                top: state.playerY + state.playerHeight * 0.08,
+                bottom: state.playerY + state.playerHeight * 0.92
+            };
+
+            // 엔티티 이동 및 판정
+            for (let i = state.entities.length - 1; i >= 0; i--) {
+                const ent = state.entities[i];
+                ent.x = getLaneCenterX(ent.lane);
+                ent.y += ent.baseSpeed * speedMult * dt;
+
+                // 충돌 판정
+                const eBox = {
+                    left: ent.x - ent.width * 0.38,
+                    right: ent.x + ent.width * 0.38,
+                    top: ent.y + ent.height * 0.08,
+                    bottom: ent.y + ent.height * 0.92
+                };
+
+                const isOverlapping =
+                    pBox.left < eBox.right &&
+                    pBox.right > eBox.left &&
+                    pBox.top < eBox.bottom &&
+                    pBox.bottom > eBox.top;
+
+                if (isOverlapping) {
+                    state.entities.splice(i, 1);
+                    if (ent.type === 'fuel') {
+                        handleFuelPickup(ent);
+                    } else if (state.invincibleTimer <= 0) {
+                        handleCollision(ent);
+                        if (!state.running) return;
+                    }
+                    continue;
+                }
+
+                // 플레이어 차량의 뒤편으로 무사히 지나쳤을 때 (추월/회피 성공 판정)
+                if (!ent.passed && ent.y > state.playerY + state.playerHeight * 0.65) {
+                    ent.passed = true;
+
+                    if (ent.type === 'car') {
+                        // 역주행 차량 추월: 콤보 +1 & 추월 점수 획득 (부딪히기 직전에 피했다면 기본 5점 + 콤보 보너스)
+                        const prevTier = getComboTier();
+                        state.combo += 1;
+                        if (state.combo > state.maxCombo) state.maxCombo = state.combo;
+                        state.dodgedCars += 1;
+
+                        const basePts = ent.nearMissed ? 5 : 3;
+                        const pts = basePts + getComboTier();
+                        state.score += pts;
+
+                        if (ent.nearMissed) {
+                            sfx.playNearMiss();
+                            spawnCrashParticles(state.playerVisualX, state.playerY + state.playerHeight * 0.3, '#38bdf8');
+                            addFloatingText(`⚡ 아슬아슬! +${pts}점`, ent.x, state.playerY - 12, '#38bdf8');
+                        } else {
+                            sfx.playPass(state.combo);
+                            addFloatingText(`+${pts}점`, ent.x, state.playerY, '#fbbf24');
+                        }
+
+                        const newTier = getComboTier();
+                        if (newTier > prevTier) {
+                            triggerLevelUpBanner();
+                        }
+                        updateHUD(true);
+                    } else if (ent.type === 'obstacle') {
+                        // 도로 장애물 회피: 부딪히기 직전에 피했다면 5점 부여
+                        state.dodgedObstacles += 1;
+                        if (ent.nearMissed) {
+                            state.score += 5;
+                            sfx.playNearMiss();
+                            spawnCrashParticles(state.playerVisualX, state.playerY + state.playerHeight * 0.3, '#38bdf8');
+                            addFloatingText('⚡ 아슬아슬! +5점', ent.x, state.playerY - 12, '#38bdf8');
+                            updateHUD(false);
+                        } else {
+                            addFloatingText('회피!', ent.x, state.playerY, '#34d399');
+                        }
+                    }
+                }
+
+                // 화면 아래로 완전히 벗어나면 제거
+                if (ent.y > canvas.height + 100) {
+                    state.entities.splice(i, 1);
+                }
+            }
+
+            // 플로팅 텍스트 업데이트
+            for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
+                const ft = state.floatingTexts[i];
+                ft.y += ft.vy * dt;
+                ft.alpha -= dt * 1.4;
+                if (ft.alpha <= 0) state.floatingTexts.splice(i, 1);
+            }
+
+            // 파티클 업데이트
+            for (let i = state.particles.length - 1; i >= 0; i--) {
+                const p = state.particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.alpha -= dt * 2.2;
+                if (p.alpha <= 0) state.particles.splice(i, 1);
+            }
+        }
+
+        // 5차선 도로 및 오브젝트 렌더링
+        function render() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const laneWidth = w / LANE_COUNT;
+
+            // 1. 아스팔트 도로 배경
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, w, h);
+
+            // 차선별 미세한 명암 차이 부여
+            for (let l = 0; l < LANE_COUNT; l++) {
+                if (l % 2 === 1) {
+                    ctx.fillStyle = 'rgba(15, 23, 42, 0.28)';
+                    ctx.fillRect(l * laneWidth, 0, laneWidth, h);
+                }
+            }
+
+            // 좌우 갓길 경계선
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(0, 0, 5, h);
+            ctx.fillRect(w - 5, 0, 5, h);
+
+            // 5개 차선 구분 점선 그리기
+            ctx.strokeStyle = 'rgba(226, 232, 240, 0.35)';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([36, 44]);
+            ctx.lineDashOffset = -state.roadScrollOffset;
+
+            for (let l = 1; l < LANE_COUNT; l++) {
+                const x = l * laneWidth;
+                ctx.beginPath();
+                ctx.moveTo(x, -80);
+                ctx.lineTo(x, h + 80);
+                ctx.stroke();
+            }
+            // 2. 역주행 차량, 장애물, 기름통 그리기
+            state.entities.forEach(ent => {
+                if (ent.type === 'car') {
+                    drawOncomingCar(ent);
+                } else if (ent.type === 'fuel') {
+                    drawFuelCan(ent);
+                } else {
+                    drawObstacle(ent);
+                }
+            });
+
+            // 3. 플레이어 차량 그리기
+            drawPlayerCar();
+
+            // 4. 충돌 파티클 그리기
+            state.particles.forEach(p => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, p.alpha);
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+
+            // 5. 플로팅 텍스트 그리기
+            state.floatingTexts.forEach(ft => {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, ft.alpha);
+                ctx.font = '900 16px Pretendard, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#0f172a';
+                ctx.fillText(ft.text, ft.x + 1.5, ft.y + 1.5);
+                ctx.fillStyle = ft.color;
+                ctx.fillText(ft.text, ft.x, ft.y);
+                ctx.restore();
+            });
+        }
+
+        // 플레이어 레이싱카 렌더링 (위쪽을 향해 달리는 파란색 차량)
+        function drawPlayerCar() {
+            const x = state.playerVisualX;
+            const y = state.playerY;
+            const w = state.playerWidth;
+            const h = state.playerHeight;
+
+            ctx.save();
+            if (state.invincibleTimer > 0 && Math.floor(state.invincibleTimer * 16) % 2 === 0) {
+                ctx.globalAlpha = 0.45;
+            }
+
+            // 전조등 불빛 효과
+            const grad = ctx.createLinearGradient(x, y, x, y - 55);
+            grad.addColorStop(0, 'rgba(56, 189, 248, 0.35)');
+            grad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(x - w * 0.38, y + 4);
+            ctx.lineTo(x - w * 0.7, y - 55);
+            ctx.lineTo(x + w * 0.7, y - 55);
+            ctx.lineTo(x + w * 0.38, y + 4);
+            ctx.closePath();
+            ctx.fill();
+
+            // 타이어 4개
+            ctx.fillStyle = '#090d16';
+            const wheelW = 6;
+            const wheelH = h * 0.22;
+            ctx.fillRect(x - w / 2 - 2, y + h * 0.12, wheelW, wheelH);
+            ctx.fillRect(x + w / 2 - 4, y + h * 0.12, wheelW, wheelH);
+            ctx.fillRect(x - w / 2 - 2, y + h * 0.66, wheelW, wheelH);
+            ctx.fillRect(x + w / 2 - 4, y + h * 0.66, wheelW, wheelH);
+
+            // 차체 메인 바디
+            ctx.fillStyle = '#2563eb';
+            ctx.beginPath();
+            ctx.roundRect(x - w / 2, y, w, h, 11);
+            ctx.fill();
+
+            // 중앙 레이싱 스트라이프
+            ctx.fillStyle = '#60a5fa';
+            ctx.fillRect(x - w * 0.12, y + 4, w * 0.24, h - 8);
+
+            // 루프 및 유리창
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.roundRect(x - w * 0.36, y + h * 0.24, w * 0.72, h * 0.46, 6);
+            ctx.fill();
+
+            // 헤드라이트 (상단)
+            ctx.fillStyle = '#bae6fd';
+            ctx.fillRect(x - w * 0.36, y + 2, w * 0.2, 5);
+            ctx.fillRect(x + w * 0.16, y + 2, w * 0.2, 5);
+
+            // 브레이크등 (하단)
+            ctx.fillStyle = '#f43f5e';
+            ctx.fillRect(x - w * 0.36, y + h - 5, w * 0.22, 4);
+            ctx.fillRect(x + w * 0.14, y + h - 5, w * 0.22, 4);
+
+            ctx.restore();
+        }
+
+        // 역주행 차량 렌더링 (아래쪽을 향해 마주 달려오는 차량)
+        function drawOncomingCar(ent) {
+            const { x, y, width: w, height: h, palette } = ent;
+            ctx.save();
+
+            // 역주행 헤드라이트 불빛 (아래쪽으로 비춤)
+            const grad = ctx.createLinearGradient(x, y + h, x, y + h + 42);
+            grad.addColorStop(0, 'rgba(254, 240, 138, 0.32)');
+            grad.addColorStop(1, 'rgba(254, 240, 138, 0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.moveTo(x - w * 0.35, y + h - 2);
+            ctx.lineTo(x - w * 0.6, y + h + 42);
+            ctx.lineTo(x + w * 0.6, y + h + 42);
+            ctx.lineTo(x + w * 0.35, y + h - 2);
+            ctx.closePath();
+            ctx.fill();
+
+            // 타이어
+            ctx.fillStyle = '#090d16';
+            const wheelW = 5;
+            const wheelH = h * 0.22;
+            ctx.fillRect(x - w / 2 - 2, y + h * 0.14, wheelW, wheelH);
+            ctx.fillRect(x + w / 2 - 3, y + h * 0.14, wheelW, wheelH);
+            ctx.fillRect(x - w / 2 - 2, y + h * 0.64, wheelW, wheelH);
+            ctx.fillRect(x + w / 2 - 3, y + h * 0.64, wheelW, wheelH);
+
+            // 차체
+            ctx.fillStyle = palette.body;
+            ctx.beginPath();
+            ctx.roundRect(x - w / 2, y, w, h, 10);
+            ctx.fill();
+
+            // 지붕/앞유리 (아래쪽을 향함)
+            ctx.fillStyle = palette.roof;
+            ctx.beginPath();
+            ctx.roundRect(x - w * 0.36, y + h * 0.28, w * 0.72, h * 0.46, 6);
+            ctx.fill();
+
+            // 전면 유리창 하이라이트
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(x - w * 0.32, y + h * 0.54, w * 0.64, h * 0.16);
+
+            // 역주행 전조등 (하단)
+            ctx.fillStyle = palette.light;
+            ctx.fillRect(x - w * 0.36, y + h - 6, w * 0.2, 5);
+            ctx.fillRect(x + w * 0.16, y + h - 6, w * 0.2, 5);
+
+            ctx.restore();
+        }
+
+        // 도로 장애물 렌더링 (바리케이드, 라바콘, 낙석)
+        function drawObstacle(ent) {
+            const { x, y, width: w, height: h, obstacleKind } = ent;
+            ctx.save();
+
+            if (obstacleKind === 'barricade') {
+                // 공사장 줄무늬 바리케이드
+                ctx.fillStyle = '#f59e0b';
+                ctx.beginPath();
+                ctx.roundRect(x - w / 2, y + h * 0.2, w, h * 0.55, 6);
+                ctx.fill();
+
+                ctx.fillStyle = '#1e293b';
+                const stripeW = w / 5;
+                for (let s = -1; s < 5; s += 2) {
+                    ctx.fillRect(x - w / 2 + s * stripeW, y + h * 0.25, stripeW, h * 0.45);
+                }
+
+                // 경고등
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(x - w * 0.28, y + h * 0.16, 5, 0, Math.PI * 2);
+                ctx.arc(x + w * 0.28, y + h * 0.16, 5, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (obstacleKind === 'cone') {
+                // 주황색 라바콘
+                ctx.fillStyle = '#ea580c';
+                ctx.beginPath();
+                ctx.roundRect(x - w * 0.42, y + h * 0.65, w * 0.84, h * 0.25, 4);
+                ctx.fill();
+
+                ctx.fillStyle = '#f97316';
+                ctx.beginPath();
+                ctx.moveTo(x, y + h * 0.08);
+                ctx.lineTo(x - w * 0.34, y + h * 0.78);
+                ctx.lineTo(x + w * 0.34, y + h * 0.78);
+                ctx.closePath();
+                ctx.fill();
+
+                // 흰색 반사띠
+                ctx.fillStyle = '#f8fafc';
+                ctx.beginPath();
+                ctx.moveTo(x - w * 0.14, y + h * 0.36);
+                ctx.lineTo(x + w * 0.14, y + h * 0.36);
+                ctx.lineTo(x + w * 0.22, y + h * 0.54);
+                ctx.lineTo(x - w * 0.22, y + h * 0.54);
+                ctx.closePath();
+                ctx.fill();
+            } else {
+                // 도로 위 낙석 바위
+                ctx.fillStyle = '#64748b';
+                ctx.beginPath();
+                ctx.arc(x, y + h / 2, w * 0.42, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.beginPath();
+                ctx.arc(x - w * 0.1, y + h * 0.4, w * 0.22, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        // 기름통 아이템 렌더링 (+25% 연료 충전 아이템)
+        function drawFuelCan(ent) {
+            const { x, y, width: w, height: h } = ent;
+            ctx.save();
+
+            // 초록빛 후광 효과
+            const glow = ctx.createRadialGradient(x, y + h / 2, 4, x, y + h / 2, w * 0.72);
+            glow.addColorStop(0, 'rgba(16, 185, 129, 0.55)');
+            glow.addColorStop(1, 'rgba(16, 185, 129, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(x, y + h / 2, w * 0.72, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 기름통 본체
+            ctx.fillStyle = '#10b981';
+            ctx.strokeStyle = '#a7f3d0';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(x - w * 0.34, y + h * 0.18, w * 0.68, h * 0.68, 6);
+            ctx.fill();
+            ctx.stroke();
+
+            // 기름통 상단 손잡이 및 주입구
+            ctx.fillStyle = '#059669';
+            ctx.fillRect(x - w * 0.16, y + h * 0.06, w * 0.32, h * 0.12);
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillRect(x + w * 0.12, y + h * 0.08, w * 0.16, h * 0.09);
+
+            // 중앙 +25 텍스트 표시
+            ctx.fillStyle = '#064e3b';
+            ctx.font = '900 11px Pretendard, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('+25%', x, y + h * 0.53);
+
+            ctx.restore();
+        }
+
+        // 메인 루프
+        function gameLoop(now) {
+            if (!state.running) return;
+            const dt = Math.min(0.05, (now - state.lastFrameTime) / 1000);
+            state.lastFrameTime = now;
+
+            update(dt);
+            render();
+
+            if (state.running) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // 이벤트 리스너 바인딩 (마우스/터치/키보드 모두 지원)
+        function bindButtonEvents(btnElement, direction) {
+            const trigger = (e) => {
+                e.preventDefault();
+                btnElement.classList.add('pressed');
+                moveLane(direction);
+            };
+            const release = () => {
+                btnElement.classList.remove('pressed');
+            };
+
+            btnElement.addEventListener('pointerdown', trigger);
+            btnElement.addEventListener('pointerup', release);
+            btnElement.addEventListener('pointerleave', release);
+            btnElement.addEventListener('pointercancel', release);
+        }
+
+        bindButtonEvents(leftBtn, -1);
+        bindButtonEvents(rightBtn, 1);
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                leftBtn.classList.add('pressed');
+                moveLane(-1);
+            } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                rightBtn.classList.add('pressed');
+                moveLane(1);
+            } else if ((e.key === 'Enter' || e.key === ' ') && !state.running) {
+                startGame();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                leftBtn.classList.remove('pressed');
+            } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                rightBtn.classList.remove('pressed');
+            }
+        });
+
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            if (!state.running) render();
+        });
+
+        // 초기 화면 렌더링
+        window.onload = () => {
+            resizeCanvas();
+            render();
+        };
+    </script>
+</body>
+</html>
